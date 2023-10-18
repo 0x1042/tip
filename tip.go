@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -21,7 +20,7 @@ const (
 func main() {
 	app := cli.NewApp()
 	app.Name = "tip"
-	app.Usage = "Get public IP address by stun server."
+	app.Usage = "Get Public IP address by stun server."
 	app.Compiled = time.Now()
 	app.Authors = []*cli.Author{
 		{
@@ -32,18 +31,18 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
-			Name:     "stunhost",
+			Name:     "host",
 			Required: false,
 			Usage:    "stun host",
 			Value:    "stun.qq.com",
-			Aliases:  []string{"s"},
+			Aliases:  []string{"t"},
 			EnvVars:  []string{ENVHOSTKEY},
 		},
-		&cli.UintFlag{
-			Name:     "stunport",
+		&cli.StringFlag{
+			Name:     "port",
 			Required: false,
 			Usage:    "stun port",
-			Value:    3478,
+			Value:    "3478",
 			Aliases:  []string{"p"},
 			EnvVars:  []string{ENVPORTKEY},
 		},
@@ -57,11 +56,10 @@ func main() {
 	}
 
 	app.Action = func(ctx *cli.Context) error {
-		host := ctx.String("stunhost")
-		port := fmt.Sprintf("%d", ctx.Uint("stunport"))
-		addr := net.JoinHostPort(host, port)
-		v4Only := ctx.Bool("ipv4")
-		return run(addr, v4Only)
+		host := ctx.String("host")
+		addr := net.JoinHostPort(host, ctx.String("port"))
+		v4 := ctx.Bool("ipv4")
+		return run(addr, v4)
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -69,40 +67,36 @@ func main() {
 	}
 }
 
-func run(addr string, onlyV4 bool) error {
-	network := ifelse(onlyV4, NETWORK4, NETWORK)
+func run(addr string, v4 bool) (err error) {
+	network := NETWORK
+	if v4 {
+		network = NETWORK4
+	}
 	uaddr, err := net.ResolveUDPAddr(network, addr)
 	if err != nil {
-		return err
+		return
 	}
 
 	ln, err := net.ListenUDP(network, nil)
 	if err != nil {
-		return err
+		return
 	}
 
 	if _, err = ln.WriteToUDP(stun.Request(stun.NewTxID()), uaddr); err != nil {
-		return err
+		return
 	}
 
 	var buf [1024]byte
 	n, _, err := ln.ReadFromUDPAddrPort(buf[:])
 	if err != nil {
-		return err
+		return
 	}
 
 	_, saddr, err := stun.ParseResponse(buf[:n])
 	if err != nil {
-		return err
+		return
 	}
 
 	println(saddr.Addr().String())
-	return nil
-}
-
-func ifelse(flag bool, trueValue, falseValue string) string {
-	if flag {
-		return trueValue
-	}
-	return falseValue
+	return
 }
